@@ -140,12 +140,13 @@ def preprocess_data(df, is_test=False):
     df['Embarked'].fillna(df['Embarked'].mode()[0], inplace=True)
     df['Fare'].fillna(df['Fare'].median(), inplace=True)
     df['Cabin'].fillna('Unknown', inplace=True)
-    
-    
-    # Extract Title from Name (e.g. Mr, Mrs, Miss)
+
+    # Extract and normalize Title from Name (e.g. Mr, Mrs, Miss)
     df['Title'] = df['Name'].str.extract(r',\s*([^\.]+)\.', expand=False)
-    # Group rare titles
-    df['Title'] = df['Title'].replace({
+    df['Title'] = df['Title'].str.strip()
+
+    # Group titles into a smaller, more robust set of categories
+    title_mapping = {
         'Mlle': 'Miss',
         'Ms': 'Miss',
         'Mme': 'Mrs',
@@ -154,48 +155,62 @@ def preprocess_data(df, is_test=False):
         'Sir': 'Royal',
         'Dona': 'Royal',
         'Jonkheer': 'Rare',
-        'Capt': 'Rare',
-        'Col': 'Rare',
-        'Major': 'Rare',
-        'Dr': 'Rare',
-        'Rev': 'Rare'
-    })
-    
+        'Capt': 'Officer',
+        'Col': 'Officer',
+        'Major': 'Officer',
+        'Dr': 'Officer',
+        'Rev': 'Officer'
+    }
+    df['Title'] = df['Title'].replace(title_mapping)
+
+    # Any remaining very rare titles can be grouped as 'Rare'
+    rare_titles = df['Title'].value_counts()[df['Title'].value_counts() < 10].index
+    df['Title'] = df['Title'].replace(dict.fromkeys(rare_titles, 'Rare'))
+
     # Family size features
     df['FamilySize'] = df['SibSp'] + df['Parch'] + 1
     df['IsAlone'] = (df['FamilySize'] == 1).astype(int)
-    
-    # Ticket prefix length (rough proxy for ticket type)
+
+    # Fare per person (helps normalize large family fares)
+    df['FarePerPerson'] = df['Fare'] / df['FamilySize']
+
+    # Ticket prefix (rough proxy for ticket type / booking pattern)
     df['TicketPrefix'] = df['Ticket'].str.replace(r'\.', '', regex=True)
     df['TicketPrefix'] = df['TicketPrefix'].str.replace('/', '', regex=True)
     df['TicketPrefix'] = df['TicketPrefix'].str.extract(r'(\D*)', expand=False).str.strip()
     df['TicketPrefix'] = df['TicketPrefix'].replace('', 'NONE')
-    
-    # Cabin deck (first letter of cabin)
+
+    # Cabin deck (first letter of cabin) and cabin presence
     df['CabinDeck'] = df['Cabin'].str[0]
     df.loc[df['CabinDeck'] == 'U', 'CabinDeck'] = 'Unknown'
-    
+    df['HasCabin'] = (df['Cabin'] != 'Unknown').astype(int)
+
     # Age bands (to help tree-based models)
-    df['AgeBand'] = pd.cut(df['Age'], bins=[0, 12, 18, 25, 35, 45, 60, 80], labels=False, include_lowest=True)
-    
+    df['AgeBand'] = pd.cut(
+        df['Age'],
+        bins=[0, 12, 18, 25, 35, 45, 60, 80],
+        labels=False,
+        include_lowest=True,
+    )
+
     # Fare bands
     df['FareBand'] = pd.qcut(df['Fare'], 4, labels=False, duplicates='drop')
-    
+
     # Drop unnecessary columns
     drop_cols = ['PassengerId', 'Name', 'Ticket']
-    # Keep Cabin only via CabinDeck feature
+    # Keep Cabin only via CabinDeck/HasCabin features
     if 'Cabin' in df.columns:
         drop_cols.append('Cabin')
     df = df.drop(drop_cols, axis=1)
-    
-    #Encode categorical variables
+
+    # Encode categorical variables
     df['Sex'] = df['Sex'].map({'female': 1, 'male': 0})
     df['Embarked'] = df['Embarked'].map({'S': 0, 'C': 1, 'Q': 2})
-    
+
     # One-hot encode engineered categorical features
     cat_cols = ['Title', 'TicketPrefix', 'CabinDeck']
     df = pd.get_dummies(df, columns=cat_cols, drop_first=True)
-    
+
     return df
 
 def evaluate_models_cv(X, y, cv_splits=5):
