@@ -1,2 +1,2 @@
 # KaggleComp
-Repository for my Kaggle Competitions
+My Repository for my Kaggle Competition work and submissions.
