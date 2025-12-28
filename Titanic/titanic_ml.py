@@ -6,11 +6,12 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.pipeline import Pipeline
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -21,7 +22,7 @@ plt.rcParams['figure.figsize'] = (10, 6)
 
 
 def load_data(train_path='data/train.csv', test_path='data/test.csv'):
-    """Load training and test datasets."""
+    #Load training and test datasets.
     train_df = pd.read_csv(train_path)
     test_df = pd.read_csv(test_path)
     
@@ -34,7 +35,7 @@ def load_data(train_path='data/train.csv', test_path='data/test.csv'):
 
 
 def explore_data(train_df):
-    """Perform exploratory data analysis."""
+    #Perform exploratory data analysis.
     print("\n" + "="*50)
     print("EXPLORATORY DATA ANALYSIS")
     print("="*50)
@@ -87,7 +88,7 @@ def explore_data(train_df):
 
 
 def preprocess_data(df, is_test=False):
-    """Preprocess the data (handle missing values, feature engineering, encode categoricals)."""
+    #Preprocess the data (handle missing values, feature engineering, encode categoricals).
     df = df.copy()
     
     # Handle missing values
@@ -97,7 +98,7 @@ def preprocess_data(df, is_test=False):
     df['Cabin'].fillna('Unknown', inplace=True)
     
     
-    Extract Title from Name (e.g. Mr, Mrs, Miss)
+    # Extract Title from Name (e.g. Mr, Mrs, Miss)
     df['Title'] = df['Name'].str.extract(r',\s*([^\.]+)\.', expand=False)
     # Group rare titles
     df['Title'] = df['Title'].replace({
@@ -153,54 +154,63 @@ def preprocess_data(df, is_test=False):
     
     return df
 
-def train_models(X_train, X_val, y_train, y_val):
-    #Train and evaluate multiple models.
+def evaluate_models_cv(X, y, cv_splits=5):
+    #Evaluate candidate models using cross-validation for more robust estimates.
     print("\n" + "="*50)
-    print("MODEL TRAINING AND EVALUATION")
+    print("CROSS-VALIDATED MODEL EVALUATION")
     print("="*50)
     
+    cv = StratifiedKFold(n_splits=cv_splits, shuffle=True, random_state=42)
     results = {}
     
-    # Logistic Regression
-    print("\n--- Logistic Regression ---")
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_val_scaled = scaler.transform(X_val)
-    
-    lr = LogisticRegression(random_state=42, max_iter=1000)
-    lr.fit(X_train_scaled, y_train)
-    y_pred_lr = lr.predict(X_val_scaled)
-    lr_accuracy = accuracy_score(y_val, y_pred_lr)
-    
-    print(f"Accuracy: {lr_accuracy:.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_val, y_pred_lr))
-    
-    results['Logistic Regression'] = {'model': lr, 'scaler': scaler, 'accuracy': lr_accuracy}
+    # Logistic Regression with StandardScaler in a Pipeline
+    print("\n--- Logistic Regression (with StandardScaler) ---")
+    pipe_lr = Pipeline([
+        ('scaler', StandardScaler()),
+        ('clf', LogisticRegression(random_state=42, max_iter=1000)),
+    ])
+    scores_lr = cross_val_score(pipe_lr, X, y, cv=cv, scoring='accuracy', n_jobs=-1)
+    print(f"CV Accuracy: {scores_lr.mean():.4f} +/- {scores_lr.std():.4f}")
+    results['Logistic Regression'] = scores_lr.mean()
     
     # Random Forest
     print("\n--- Random Forest ---")
     rf = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
-    rf.fit(X_train, y_train)
-    y_pred_rf = rf.predict(X_val)
-    rf_accuracy = accuracy_score(y_val, y_pred_rf)
-    
-    print(f"Accuracy: {rf_accuracy:.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_val, y_pred_rf))
-    
-    # Feature importance
-    feature_importance = pd.DataFrame({
-        'Feature': X_train.columns,
-        'Importance': rf.feature_importances_
-    }).sort_values('Importance', ascending=False)
-    
-    print("\nFeature Importance:")
-    print(feature_importance)
-    
-    results['Random Forest'] = {'model': rf, 'scaler': None, 'accuracy': rf_accuracy}
+    scores_rf = cross_val_score(rf, X, y, cv=cv, scoring='accuracy', n_jobs=-1)
+    print(f"CV Accuracy: {scores_rf.mean():.4f} +/- {scores_rf.std():.4f}")
+    results['Random Forest'] = scores_rf.mean()
     
     return results
+
+
+def train_best_model(X, y, best_model_name):
+    #Train the selected best model on the full training data.
+    #Returns the fitted model and an optional scaler (for models that need it).
+    
+    if best_model_name == 'Logistic Regression':
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        model = LogisticRegression(random_state=42, max_iter=1000)
+        model.fit(X_scaled, y)
+        return model, scaler
+    
+    elif best_model_name == 'Random Forest':
+        model = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
+        model.fit(X, y)
+        
+        # Feature importance on full training data
+        feature_importance = pd.DataFrame({
+            'Feature': X.columns,
+            'Importance': model.feature_importances_
+        }).sort_values('Importance', ascending=False)
+        
+        print("\nFeature Importance:")
+        print(feature_importance)
+        
+        return model, None
+    
+    else:
+        raise ValueError(f"Unknown model name: {best_model_name}")
 
 
 def generate_submission(test_df, best_model, scaler=None, model_name='Random Forest', feature_cols=None):
@@ -267,22 +277,18 @@ def main():
     X = train_processed.drop('Survived', axis=1)
     y = train_processed['Survived']
     
-    # Train/validation split
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-    print(f"Training set size: {X_train.shape[0]}")
-    print(f"Validation set size: {X_val.shape[0]}")
+    # Cross-validated evaluation of candidate models
+    cv_results = evaluate_models_cv(X, y, cv_splits=5)
     
-    # Train models
-    results = train_models(X_train, X_val, y_train, y_val)
-    
-    # Select best model
-    best_model_name = max(results, key=lambda x: results[x]['accuracy'])
-    best_model = results[best_model_name]['model']
-    best_scaler = results[best_model_name]['scaler']
+    # Select best model based on mean CV accuracy
+    best_model_name = max(cv_results, key=cv_results.get)
     
     print("\n" + "="*50)
-    print(f"Best Model: {best_model_name} (Accuracy: {results[best_model_name]['accuracy']:.4f})")
+    print(f"Best Model (by CV Accuracy): {best_model_name} (CV Accuracy: {cv_results[best_model_name]:.4f})")
     print("="*50)
+    
+    # Train the selected best model on the full training data
+    best_model, best_scaler = train_best_model(X, y, best_model_name)
     
     # Generate submission
     # Pass the training feature columns so the test set can be aligned properly
