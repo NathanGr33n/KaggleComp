@@ -1,6 +1,12 @@
 #Titanic - Machine Learning from Disaster
 #By: NathanGr33n
 #Date: 12-27-25
+"""Titanic - Machine Learning from Disaster pipeline.
+
+This module provides functions to load and explore the Titanic dataset,
+preprocess features, evaluate and train models, and generate a Kaggle
+submission file.
+"""
 
 import pandas as pd
 import numpy as np
@@ -22,7 +28,19 @@ plt.rcParams['figure.figsize'] = (10, 6)
 
 
 def load_data(train_path='data/train.csv', test_path='data/test.csv'):
-    #Load training and test datasets.
+    """Load the Titanic training and test datasets from CSV files.
+
+    Args:
+        train_path (str, optional): File path to the training data CSV.
+            Defaults to 'data/train.csv'.
+        test_path (str, optional): File path to the test data CSV.
+            Defaults to 'data/test.csv'.
+
+    Returns:
+        tuple[pandas.DataFrame, pandas.DataFrame]:
+            A tuple ``(train_df, test_df)`` containing the loaded training
+            and test dataframes.
+    """
     train_df = pd.read_csv(train_path)
     test_df = pd.read_csv(test_path)
     
@@ -35,7 +53,17 @@ def load_data(train_path='data/train.csv', test_path='data/test.csv'):
 
 
 def explore_data(train_df):
-    #Perform exploratory data analysis.
+    """Perform basic exploratory data analysis (EDA) on the training set.
+
+    This function prints dataset info, missing values, basic statistics, and
+    survival distribution. It also creates and saves several EDA plots to
+    ``eda_plots.png``.
+
+    Args:
+        train_df (pandas.DataFrame):
+            The Titanic training dataframe containing a ``Survived`` column
+            and related features.
+    """
     print("\n" + "="*50)
     print("EXPLORATORY DATA ANALYSIS")
     print("="*50)
@@ -88,7 +116,23 @@ def explore_data(train_df):
 
 
 def preprocess_data(df, is_test=False):
-    #Preprocess the data (handle missing values, feature engineering, encode categoricals).
+    """Clean and transform the Titanic data for modeling.
+
+    This function handles missing values, engineers additional features
+    (for example, title, family size, ticket prefix, cabin deck, age and
+    fare bands), encodes categorical variables, and drops unused columns.
+
+    Args:
+        df (pandas.DataFrame): Raw Titanic dataframe (training or test).
+        is_test (bool, optional):
+            Indicates whether the dataframe is the Kaggle test set. Currently
+            this flag is not used to change behavior but is reserved for
+            future differences between train and test preprocessing.
+
+    Returns:
+        pandas.DataFrame: Processed dataframe with numeric and one-hot encoded
+        features ready for model training or prediction.
+    """
     df = df.copy()
     
     # Handle missing values
@@ -155,7 +199,27 @@ def preprocess_data(df, is_test=False):
     return df
 
 def evaluate_models_cv(X, y, cv_splits=5):
-    #Evaluate candidate models using cross-validation for more robust estimates.
+    """Evaluate candidate models using cross-validation.
+
+    Runs stratified K-fold cross-validation for:
+
+    * Logistic Regression with standardization.
+    * Random Forest classifier.
+
+    and prints the mean and standard deviation of accuracy for each model.
+
+    Args:
+        X (pandas.DataFrame): Feature matrix for the training data.
+        y (pandas.Series | array-like):
+            Binary target vector indicating survival (0 or 1).
+        cv_splits (int, optional):
+            Number of folds to use in StratifiedKFold cross-validation.
+            Defaults to 5.
+
+    Returns:
+        dict[str, float]: Mapping from model name to mean cross-validated
+        accuracy.
+    """
     print("\n" + "="*50)
     print("CROSS-VALIDATED MODEL EVALUATION")
     print("="*50)
@@ -184,8 +248,31 @@ def evaluate_models_cv(X, y, cv_splits=5):
 
 
 def train_best_model(X, y, best_model_name):
-    #Train the selected best model on the full training data.
-    #Returns the fitted model and an optional scaler (for models that need it).
+    """Train the selected model on the full training data.
+
+    Depending on ``best_model_name``, this either trains:
+
+    * Logistic Regression with a ``StandardScaler`` on scaled features.
+    * Random Forest on the raw feature matrix.
+
+    Args:
+        X (pandas.DataFrame): Feature matrix for the training data.
+        y (pandas.Series | array-like):
+            Binary target vector indicating survival (0 or 1).
+        best_model_name (str):
+            Name of the model to train. Expected values are
+            ``"Logistic Regression"`` or ``"Random Forest"``.
+
+    Returns:
+        tuple[sklearn.base.BaseEstimator, sklearn.preprocessing.StandardScaler | None]:
+            A tuple ``(model, scaler)`` where ``model`` is the trained
+            estimator and ``scaler`` is the fitted ``StandardScaler`` for
+            Logistic Regression, or ``None`` for Random Forest.
+
+    Raises:
+        ValueError: If ``best_model_name`` does not correspond to a supported
+            model.
+    """
     
     if best_model_name == 'Logistic Regression':
         scaler = StandardScaler()
@@ -214,7 +301,34 @@ def train_best_model(X, y, best_model_name):
 
 
 def generate_submission(test_df, best_model, scaler=None, model_name='Random Forest', feature_cols=None):
-    #Generate submission file.
+    """Generate a Kaggle submission file using the trained model.
+
+    The function preprocesses the raw test dataframe, aligns its feature
+    columns with the training feature set, optionally applies scaling, and
+    uses the trained model to predict survival. The predictions are written
+    to ``submission.csv``.
+
+    Args:
+        test_df (pandas.DataFrame):
+            Raw Kaggle test dataframe containing ``PassengerId`` and feature
+            columns.
+        best_model (sklearn.base.BaseEstimator):
+            Trained model used to generate predictions.
+        scaler (sklearn.preprocessing.StandardScaler | None, optional):
+            Fitted scaler used for models that require standardized features
+            (for example, Logistic Regression). If ``None``, no scaling is
+            applied.
+        model_name (str, optional):
+            Human-readable name of the model, used only for logging.
+            Defaults to ``"Random Forest"``.
+        feature_cols (list[str] | pandas.Index | None, optional):
+            Feature column names used during training. If provided, the
+            processed test features are reindexed to match these columns.
+
+    Returns:
+        pandas.DataFrame: Dataframe containing ``PassengerId`` and predicted
+        ``Survived`` values that were written to ``submission.csv``.
+    """
     print("\n" + "="*50)
     print("GENERATING PREDICTIONS")
     print("="*50)
@@ -255,6 +369,18 @@ def generate_submission(test_df, best_model, scaler=None, model_name='Random For
 
 
 def main():
+    """Run the full Titanic modeling pipeline end-to-end.
+
+    This function performs the following steps:
+
+    1. Load training and test data from CSV files.
+    2. Perform exploratory data analysis and save plots.
+    3. Preprocess the training data and construct features/target.
+    4. Evaluate candidate models with cross-validation.
+    5. Select and train the best-performing model on all training data.
+    6. Generate predictions for the Kaggle test set and write
+       ``submission.csv``.
+    """
     print("="*50)
     print("TITANIC - MACHINE LEARNING FROM DISASTER")
     print("="*50)
