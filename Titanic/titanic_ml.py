@@ -1,5 +1,5 @@
 #Titanic - Machine Learning from Disaster
-#By: N4th4nGr33n
+#By: NathanGr33n
 #Date: 12-27-25
 
 import pandas as pd
@@ -122,7 +122,7 @@ def preprocess_data(df, is_test=False):
     df['IsAlone'] = (df['FamilySize'] == 1).astype(int)
     
     # Ticket prefix length (rough proxy for ticket type)
-    df['TicketPrefix'] = df['Ticket'].str.replace('\.', '', regex=True)
+    df['TicketPrefix'] = df['Ticket'].str.replace(r'\.', '', regex=True)
     df['TicketPrefix'] = df['TicketPrefix'].str.replace('/', '', regex=True)
     df['TicketPrefix'] = df['TicketPrefix'].str.extract(r'(\D*)', expand=False).str.strip()
     df['TicketPrefix'] = df['TicketPrefix'].replace('', 'NONE')
