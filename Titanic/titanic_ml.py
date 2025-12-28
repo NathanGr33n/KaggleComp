@@ -90,18 +90,14 @@ def preprocess_data(df, is_test=False):
     """Preprocess the data (handle missing values, feature engineering, encode categoricals)."""
     df = df.copy()
     
-    # ==============================
     # Handle missing values
-    # ==============================
     df['Age'].fillna(df['Age'].median(), inplace=True)
     df['Embarked'].fillna(df['Embarked'].mode()[0], inplace=True)
     df['Fare'].fillna(df['Fare'].median(), inplace=True)
     df['Cabin'].fillna('Unknown', inplace=True)
     
-    # ==============================
-    # Feature engineering
-    # ==============================
-    # Extract Title from Name (e.g. Mr, Mrs, Miss)
+    
+    Extract Title from Name (e.g. Mr, Mrs, Miss)
     df['Title'] = df['Name'].str.extract(r',\s*([^\.]+)\.', expand=False)
     # Group rare titles
     df['Title'] = df['Title'].replace({
@@ -140,18 +136,14 @@ def preprocess_data(df, is_test=False):
     # Fare bands
     df['FareBand'] = pd.qcut(df['Fare'], 4, labels=False, duplicates='drop')
     
-    # ==============================
     # Drop unnecessary columns
-    # ==============================
     drop_cols = ['PassengerId', 'Name', 'Ticket']
     # Keep Cabin only via CabinDeck feature
     if 'Cabin' in df.columns:
         drop_cols.append('Cabin')
     df = df.drop(drop_cols, axis=1)
     
-    # ==============================
-    # Encode categorical variables
-    # ==============================
+    #Encode categorical variables
     df['Sex'] = df['Sex'].map({'female': 1, 'male': 0})
     df['Embarked'] = df['Embarked'].map({'S': 0, 'C': 1, 'Q': 2})
     
@@ -211,7 +203,7 @@ def train_models(X_train, X_val, y_train, y_val):
     return results
 
 
-def generate_submission(test_df, best_model, scaler=None, model_name='Random Forest'):
+def generate_submission(test_df, best_model, scaler=None, model_name='Random Forest', feature_cols=None):
     #Generate submission file.
     print("\n" + "="*50)
     print("GENERATING PREDICTIONS")
@@ -223,8 +215,12 @@ def generate_submission(test_df, best_model, scaler=None, model_name='Random For
     # Extract PassengerId
     test_ids = test_df['PassengerId']
     
-    # Get features
-    X_test = test_processed
+    # Align test features with training features to avoid feature name mismatches
+    if feature_cols is not None:
+        # Reindex ensures it has exactly the same columns (order and names)
+        X_test = test_processed.reindex(columns=feature_cols, fill_value=0)
+    else:
+        X_test = test_processed
     
     # Make predictions
     if scaler is not None:
@@ -289,7 +285,8 @@ def main():
     print("="*50)
     
     # Generate submission
-    generate_submission(test_df, best_model, best_scaler, best_model_name)
+    # Pass the training feature columns so the test set can be aligned properly
+    generate_submission(test_df, best_model, best_scaler, best_model_name, feature_cols=X.columns)
     
     print("\n" + "="*50)
     print("PIPELINE COMPLETE")
